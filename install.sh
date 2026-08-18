@@ -230,13 +230,13 @@ DEV_MODE="no"
 VENV_DIR="venv"
 SKIP_MODELS="no"
 SKIP_SYSTEM_DEPS="no"
-WITH_WHISPER="no"
-WHISPER_CPU="no"
-NO_WHISPER_EXPLICIT="no"
 NON_INTERACTIVE="no"
 INTERACTIVE_MODE="yes"  # Default to interactive mode
 AUTO_MODE="no"
 REBUILD_WHISPERCPP="ask"
+# Pinned pywhispercpp release (sdist, built from source). Keep in sync with
+# uv.lock and the requirements/ exports.
+PYWHISPERCPP_VERSION="1.5.0"
 HAS_NVIDIA_GPU="unknown"
 GPU_NAME=""
 GPU_MEMORY=""
@@ -2715,7 +2715,7 @@ install_cpu_pywhispercpp() {
     PYWHISPERCPP_CMAKE_ARGS=$(get_pywhispercpp_cmake_args)
 
     CMAKE_ARGS="${CMAKE_ARGS:+$CMAKE_ARGS }$PYWHISPERCPP_CMAKE_ARGS" \
-        pip install --verbose --force-reinstall --no-cache-dir pywhispercpp --log "$PIP_LOG_FILE"
+        pip install --verbose --force-reinstall --no-cache-dir "pywhispercpp==${PYWHISPERCPP_VERSION}" --log "$PIP_LOG_FILE"
 }
 
 is_pywhispercpp_installed() {
@@ -2825,7 +2825,7 @@ install_whispercpp_with_gpu_support() {
             print_info "Installing pywhispercpp ($GPU_BACKEND backend)..."
             if CMAKE_ARGS="${CMAKE_ARGS:+$CMAKE_ARGS }$PYWHISPERCPP_CMAKE_ARGS" \
                 GGML_VULKAN=1 \
-                pip install --verbose --force-reinstall --no-cache-dir git+https://github.com/absadiki/pywhispercpp --log "$PIP_LOG_FILE" 2>&1; then
+                pip install --verbose --force-reinstall --no-cache-dir --no-binary pywhispercpp "pywhispercpp==${PYWHISPERCPP_VERSION}" --log "$PIP_LOG_FILE" 2>&1; then
                 if verify_pywhispercpp_backend_install "$GPU_BACKEND"; then
                     GPU_INSTALL_SUCCESS=true
                 else
@@ -2851,7 +2851,7 @@ install_whispercpp_with_gpu_support() {
                     print_info "Installing pywhispercpp ($GPU_BACKEND backend)..."
                     if CMAKE_ARGS="${CMAKE_ARGS:+$CMAKE_ARGS }$PYWHISPERCPP_CMAKE_ARGS $CUDA_CMAKE_ARGS" \
                         GGML_CUDA=1 \
-                        pip install --verbose --force-reinstall --no-cache-dir git+https://github.com/absadiki/pywhispercpp --log "$PIP_LOG_FILE" 2>&1; then
+                        pip install --verbose --force-reinstall --no-cache-dir --no-binary pywhispercpp "pywhispercpp==${PYWHISPERCPP_VERSION}" --log "$PIP_LOG_FILE" 2>&1; then
                         if verify_pywhispercpp_backend_install "$GPU_BACKEND"; then
                             GPU_INSTALL_SUCCESS=true
                         else
@@ -2927,6 +2927,13 @@ install_whispercpp_with_gpu_support() {
         print_warning "pywhispercpp is still unavailable; setting VOSK as the default engine so Vocalinux can start."
         print_warning "You can switch back to whisper.cpp from Settings after reinstalling pywhispercpp."
         SELECTED_ENGINE="vosk"
+
+        # vosk is an optional extra; make sure it is importable before
+        # falling back to it
+        if ! "$VENV_DIR/bin/python" -c "import vosk" 2>/dev/null; then
+            pip install vosk --log "$PIP_LOG_FILE" || \
+                print_warning "Could not install vosk; install it manually or pick another engine in Settings."
+        fi
 
         local FALLBACK_VOSK_CONFIG="$CONFIG_DIR/config.json"
         if [ ! -f "$FALLBACK_VOSK_CONFIG" ]; then
@@ -3199,6 +3206,12 @@ FALLBACK_CONFIG
             vosk)
                 print_info "Installing VOSK (lightweight option)..."
                 print_info "VOSK is fast and works well on older systems."
+
+                # vosk is an optional extra; install it alongside the base package
+                pip install ".[vosk]" --log "$PIP_LOG_FILE" || {
+                    print_error "Failed to install the vosk engine"
+                    return 1
+                }
 
                 # Create config with vosk as default
                 local VOSK_CONFIG_FILE="$CONFIG_DIR/config.json"
@@ -4079,7 +4092,8 @@ EOF
     echo "   • Right-click for menu options"
     echo ""
     echo "3. Start dictating!"
-    echo -e "   \e[1mDouble-tap Ctrl\e[0m anywhere to toggle recording"
+    echo -e "   \e[1mHold Right Alt\e[0m while you speak, then release to transcribe"
+    echo -e "   (push-to-talk default; double-tap \e[1mRight Alt\e[0m in toggle mode)"
     echo ""
 
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -4087,10 +4101,8 @@ EOF
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     echo "1. Open any text editor (gedit, VS Code, LibreOffice, etc.)"
-    echo "2. Double-tap Ctrl to start recording"
-    echo "3. Say: 'Hello world period'"
-    echo "4. Double-tap Ctrl to stop"
-    echo "5. You should see: 'Hello world.'"
+    echo "2. Hold Right Alt, say: 'Hello world period', then release"
+    echo "3. You should see: 'Hello world.'"
     echo ""
     echo "💡 Voice commands: 'period' 'comma' 'new line' 'delete that'"
     echo ""
