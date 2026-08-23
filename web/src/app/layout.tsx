@@ -1,9 +1,7 @@
 import "@/styles/globals.css";
 import React from "react";
-import { Bricolage_Grotesque, Source_Sans_3 } from "next/font/google";
 import { type Metadata } from "next";
 import Script from "next/script";
-import { ThemeProvider } from "@/components/theme-provider";
 import {
   absoluteUrl,
   DEFAULT_OG_IMAGE_ALT,
@@ -15,26 +13,11 @@ import {
   VOCAHQ_URL,
 } from "@/lib/seo";
 
-const display = Bricolage_Grotesque({
-  subsets: ["latin"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-const body = Source_Sans_3({
-  subsets: ["latin"],
-  variable: "--font-body",
-  display: "swap",
-});
-
 export const viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0c0c0e" },
-  ],
+  themeColor: "#f4f1e8",
 };
 
 export const metadata: Metadata = {
@@ -69,15 +52,16 @@ export const metadata: Metadata = {
   publisher: SITE_NAME,
   icons: {
     icon: [
-      { url: "/vocalinux.png", type: "image/png" },
+      { url: "/brand/vocalinux-mark-circle.svg", type: "image/svg+xml" },
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
       { url: "/favicon-96x96.png", sizes: "96x96", type: "image/png" },
+      { url: "/vocalinux.png", type: "image/png", sizes: "512x512" },
     ],
     apple: [
       { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
-    shortcut: "/vocalinux.png",
+    shortcut: "/favicon-32x32.png",
   },
   manifest: "/site.webmanifest",
   appleWebApp: {
@@ -174,8 +158,7 @@ const webSiteJsonLd = {
     "@type": "SearchAction",
     target: {
       "@type": "EntryPoint",
-      urlTemplate:
-        `${GITHUB_REPO_URL}/issues?q={search_term_string}`,
+      urlTemplate: `${GITHUB_REPO_URL}/issues?q={search_term_string}`,
     },
     "query-input": {
       "@type": "PropertyValueSpecification",
@@ -193,11 +176,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${display.variable} ${body.variable} scroll-smooth`}
-      suppressHydrationWarning
-    >
+    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://api.github.com" />
         <script
@@ -218,9 +197,7 @@ export default function RootLayout({
             gtag('config', 'G-7NBBNJNNQ7');
           `}
         </Script>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-        </ThemeProvider>
+        {children}
       </body>
     </html>
   );
