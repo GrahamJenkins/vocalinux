@@ -44,15 +44,24 @@ The `.desktop` entry is automatically configured with the detected `GI_TYPELIB_P
 
 ## Officially Supported Distributions
 
-These distributions are tested and known to work well with Vocalinux:
+These distributions are tested and known to work well with Vocalinux. A
+derivative is judged by the Python it ships rather than by its own version
+number, which rarely tracks the base release, and `install.sh` checks the
+interpreter rather than the release label.
 
 | Distribution | Version | Status | Notes |
 |--------------|---------|--------|-------|
-| Ubuntu | 22.04+ | ✅ Full Support | Primary target, most thoroughly tested |
-| Debian | 11+, Testing | ✅ Full Support | Well tested, use Ayatana AppIndicator on Debian 11+ |
+| Ubuntu | 24.04+ | ✅ Full Support | 22.04 ships Python 3.10, below the 3.11 floor |
+| Debian | 12+, Testing | ✅ Full Support | Primary target; use Ayatana AppIndicator |
 | Fedora | 39+ | ✅ Good Support | Uses lib64 paths, fully supported |
 | Arch Linux | Rolling | ✅ Good Support | Community tested, rolling release compatible |
 | openSUSE | Tumbleweed | ✅ Good Support | Good support with zypper package manager |
+| Linux Mint | On Ubuntu 24.04+ | ✅ Good Support | Mint 22 qualifies; Mint 21 is on Ubuntu 22.04, below the floor |
+| Pop!_OS | 24.04+ | ✅ Good Support | Uses Ubuntu's own numbering |
+| elementary OS | On Ubuntu 24.04+ | ✅ Good Support | elementary 8 qualifies; 7 is on Ubuntu 22.04 |
+| Zorin OS | On Ubuntu 24.04+ | ✅ Good Support | Zorin 17 is on Ubuntu 22.04, below the floor |
+| Manjaro | Rolling | ✅ Good Support | Arch base, inherits Arch compatibility |
+| EndeavourOS | Rolling | ✅ Good Support | Arch base, inherits Arch compatibility |
 
 ## Experimental Support
 
@@ -65,12 +74,6 @@ These distributions may work but have known limitations or are less tested:
 | Void Linux | ⚠️ Experimental | Untested, manual install required. Uses xbps package manager. |
 | Solus | ⚠️ Experimental | Untested, manual install required. Uses eopkg package manager. |
 | Mageia | ⚠️ Experimental | Untested, uses dnf/urpmi package managers. |
-| Linux Mint | ✅ Good Support | Based on Ubuntu, inherits Ubuntu compatibility |
-| Pop!_OS | ✅ Good Support | Based on Ubuntu, inherits Ubuntu compatibility |
-| elementary OS | ✅ Good Support | Based on Ubuntu, inherits Ubuntu compatibility |
-| Zorin OS | ✅ Good Support | Based on Ubuntu, inherits Ubuntu compatibility |
-| Manjaro | ✅ Good Support | Based on Arch, inherits Arch compatibility |
-| EndeavourOS | ✅ Good Support | Based on Arch, inherits Arch compatibility |
 
 ## Not Supported
 
@@ -88,7 +91,7 @@ sudo apt install -y python3-gi gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 \
   portaudio19-dev python3-dev python3-venv pkg-config
 ```
 
-**Note for Debian 11+:** Use `gir1.2-ayatanaappindicator3-0.1` instead of `gir1.2-appindicator3-0.1`
+**Note for Debian 12+:** Use `gir1.2-ayatanaappindicator3-0.1` instead of `gir1.2-appindicator3-0.1`
 
 ### Debian-specific notes
 
@@ -174,7 +177,7 @@ native dependencies; it does **not** mean beta or unstable packages. If
 ### Gentoo
 ```bash
 sudo emerge dev-python/pygobject:3 x11-libs/gtk+:3 dev-libs/libayatana-appindicator \
-  media-libs/portaudio dev-lang/python:3.9
+  media-libs/portaudio dev-lang/python:3.11
 ```
 
 **Note:** Gentoo compiles packages from source, which will take longer.
