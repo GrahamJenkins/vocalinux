@@ -4,25 +4,37 @@
 # .venv/ — run `just deps` after cloning (requires uv).
 #
 # Two environments, deliberately separate:
-#   .venv/  dev tooling, built by uv from .python-version (3.13).
-#   venv/   what `just install` creates, always from the system Python — on
-#           distros where PyGObject cannot be pip-built (Ubuntu 24.04, Debian)
-#           the distro package is importable only from that interpreter.
+#   .venv/  dev tooling, built by uv from .python-version (3.13). `just deps`
+#           pip-builds PyGObject from the lock and needs libgirepository-2.0-dev
+#           (Ubuntu 24.04+). Debian 12 cannot build 3.56; use `just install-dev`.
+#   venv/   what `just install` creates, always from the system Python so the
+#           distro PyGObject package is importable.
 #           install.sh ignores an activated .venv and rebuilds
 #           venv/ if another interpreter created it, so `just install` is safe to
 #           run from any shell. Override with SYSTEM_PYTHON=/usr/bin/python3.12.
 
-# Extras and groups installed by `just deps` and requested by every recipe below.
-# `uv sync` prunes whatever the flags do not name — omitting `--group lint` really
-# does uninstall the linters — and `uv run` has pruned in past versions, so every
-# recipe asks for the same set rather than depending on which uv is installed.
-# CI lints with `--only-group lint` instead: that skips the project, whose
-# pyaudio/PyGObject need system headers a lint runner has no reason to install.
+# Extras and groups installed by `just deps`. `uv sync` prunes whatever the flags
+# do not name — omitting `--group lint` really does uninstall the linters.
+# Recipes that run tools use `uv run --no-sync` so they do not undo `just deps-all`
+# (whisper/vosk/docs). They depend on `_tooling` for the same reason: with nothing
+# left to create .venv/, `uv run --no-sync` on a fresh clone leaves an empty one
+# behind and fails with `Failed to spawn: pytest`. CI lints with `--only-group lint`
+# instead: that skips the project, whose pyaudio/PyGObject need system headers a
+# lint runner has no reason to install.
 DEV_EXTRAS := "--extra dev --extra vad --group lint"
 
 # List available recipes
 default:
     @just --list
+
+# Create .venv/ and keep it matching the lock. --inexact is what makes this safe
+# to run ahead of every recipe: a plain `uv sync` removes extraneous packages, so
+# it would uninstall whatever `just deps-all` installed — the very thing the
+# --no-sync flags below exist to prevent. `version` skips this; it reads one
+# string out of version.py and needs a bare interpreter, not a sync.
+[private]
+_tooling:
+    uv sync --inexact {{DEV_EXTRAS}}
 
 # Install Vocalinux
 install:
@@ -41,36 +53,36 @@ deps-all:
     uv sync --all-extras --group lint
 
 # Run test suite
-test:
+test: _tooling
     @echo "Running tests..."
-    uv run {{DEV_EXTRAS}} pytest -v
+    uv run --no-sync pytest -v
 
 # Run tests with coverage
-test-cov:
+test-cov: _tooling
     @echo "Running tests with coverage..."
-    uv run {{DEV_EXTRAS}} pytest --cov=src --cov-report=html --cov-report=term
+    uv run --no-sync pytest --cov=src --cov-report=html --cov-report=term
     @echo "Coverage report generated in htmlcov/"
 
 # Run linters (flake8, black, isort)
-lint:
+lint: _tooling
     @echo "Running flake8..."
-    uv run {{DEV_EXTRAS}} flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+    uv run --no-sync flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
     @echo "Checking black formatting..."
-    uv run {{DEV_EXTRAS}} black --check --diff src/ tests/
+    uv run --no-sync black --check --diff src/ tests/
     @echo "Checking isort..."
-    uv run {{DEV_EXTRAS}} isort --check-only --diff --profile black src/ tests/
+    uv run --no-sync isort --check-only --diff --profile black src/ tests/
 
 # Auto-format code (black + isort)
-format:
+format: _tooling
     @echo "Formatting with black..."
-    uv run {{DEV_EXTRAS}} black src/ tests/
+    uv run --no-sync black src/ tests/
     @echo "Sorting imports with isort..."
-    uv run {{DEV_EXTRAS}} isort --profile black src/ tests/
+    uv run --no-sync isort --profile black src/ tests/
 
 # Run type checking (mypy)
-typecheck:
+typecheck: _tooling
     @echo "Running mypy..."
-    uv run {{DEV_EXTRAS}} mypy src/
+    uv run --no-sync mypy src/
 
 # Build distribution packages
 build:
@@ -103,8 +115,8 @@ lock-check:
 # every zip not already in the manifest is downloaded. A first run, or any run
 # with --refresh, pulls ~21.9GB and takes ~30 minutes.
 # Run after adding a model to vosk_model_info.py or whispercpp_model_info.py.
-model-checksums:
-    uv run {{DEV_EXTRAS}} python scripts/generate-model-checksums.py
+model-checksums: _tooling
+    uv run --no-sync python scripts/generate-model-checksums.py
 
 # Remove build artifacts
 clean:
@@ -131,16 +143,16 @@ run-debug:
     vocalinux --debug
 
 # Run from source
-run-source:
-    uv run {{DEV_EXTRAS}} python -m vocalinux.main
+run-source: _tooling
+    uv run --no-sync python -m vocalinux.main
 
 # Run from source with debug logging
-run-source-debug:
-    uv run {{DEV_EXTRAS}} python -m vocalinux.main --debug
+run-source-debug: _tooling
+    uv run --no-sync python -m vocalinux.main --debug
 
 # Run pre-commit hooks on all files
-pre-commit:
-    uv run {{DEV_EXTRAS}} pre-commit run --all-files
+pre-commit: _tooling
+    uv run --no-sync pre-commit run --all-files
 
 # Print the current version
 version:
