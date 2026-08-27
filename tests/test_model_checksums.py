@@ -571,5 +571,98 @@ download_model_file() {
         self.assertEqual(leftovers, [])
 
 
+class TestReleaseWithoutAManifest(unittest.TestCase):
+    """install.sh comes from main; the tree it clones is the last release tag.
+
+    An absent manifest means the release predates pinning, so models are left to
+    first run. A manifest that omits a model still fails closed.
+    """
+
+    SOURCE = INSTALL_SH.read_text()
+
+    PRELUDE = """
+set -uo pipefail
+print_info() { echo "INFO: $*"; }
+print_warning() { echo "WARNING: $*"; }
+print_error() { echo "ERROR: $*"; }
+print_success() { echo "SUCCESS: $*"; }
+command_exists() { command -v "$1" >/dev/null 2>&1; }
+check_connectivity() { return 0; }
+download_model_file() { echo "DOWNLOAD ATTEMPTED"; return 1; }
+"""
+
+    def _function_body(self, name: str) -> str:
+        start = self.SOURCE.index(f"\n{name}() {{")
+        end = self.SOURCE.index("\n}\n", start) + len("\n}\n")
+        return self.SOURCE[start:end]
+
+    def _run(self, script: str, functions=()) -> subprocess.CompletedProcess:
+        body = self.PRELUDE + "\n".join(self._function_body(n) for n in functions)
+        return subprocess.run(["bash", "-c", body + "\n" + script], capture_output=True, text=True)
+
+    def test_available_when_the_manifest_ships(self):
+        result = self._run(
+            f'MODEL_CHECKSUMS_FILE="{REPO_ROOT}/src/vocalinux/utils/model_checksums.txt"; '
+            "model_verification_available",
+            functions=("model_verification_available",),
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_unavailable_when_the_release_predates_pinning(self):
+        with TemporaryDirectory() as tmp:
+            result = self._run(
+                f'MODEL_CHECKSUMS_FILE="{tmp}/nope.txt"; model_verification_available',
+                functions=("model_verification_available",),
+            )
+        self.assertEqual(result.returncode, 1)
+
+    def test_vosk_refuses_before_spending_the_download(self):
+        """The 40MB fetch must not happen when nothing can verify it."""
+        with TemporaryDirectory() as tmp:
+            result = self._run(
+                f'DATA_DIR="{tmp}/data"; VOCALINUX_TMP_DIR="{tmp}/tmp"; '
+                f'mkdir -p "$DATA_DIR" "$VOCALINUX_TMP_DIR"; '
+                f'MODEL_CHECKSUMS_FILE="{tmp}/nope.txt"; '
+                "install_vosk_models; echo RC=$?",
+                functions=("pinned_digest_for", "install_vosk_models"),
+            )
+        out = result.stdout + result.stderr
+        self.assertIn("RC=1", out)
+        self.assertIn("No checksum is pinned", out)
+        self.assertNotIn("DOWNLOAD ATTEMPTED", out, "refused only after downloading 40MB")
+
+    def _model_install_block(self) -> str:
+        """The top-level section deciding which models are pre-downloaded."""
+        start = self.SOURCE.index("# Install models based on selected engine")
+        end = self.SOURCE.index("# config.json survives reinstalls", start)
+        return self.SOURCE[start:end]
+
+    def test_the_manifest_dependent_downloads_are_gated(self):
+        """Both engines whose digests live in the manifest sit behind the gate."""
+        block = self._model_install_block()
+        for call in ("install_whispercpp_model ||", "install_vosk_models ||"):
+            gate = block.rindex("if model_verification_available; then", 0, block.index(call))
+            self.assertLess(gate, block.index(call), f"{call} is not behind the gate")
+
+    def test_openai_whisper_stays_ungated(self):
+        """It verifies against the sha256 in its own URL, so needs no manifest."""
+        block = self._model_install_block()
+        call = block.index("install_whisper_model ||")
+        preceding = block[:call]
+        self.assertGreater(
+            preceding.rindex("fi"),
+            preceding.rindex("if model_verification_available; then"),
+            "the OpenAI Whisper download must not be behind the manifest gate",
+        )
+
+    def test_the_skew_is_explained_once(self):
+        block = self._model_install_block()
+        self.assertEqual(
+            block.count("if ! model_verification_available; then"),
+            1,
+            "the reason models are skipped should be stated once, not per engine",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
