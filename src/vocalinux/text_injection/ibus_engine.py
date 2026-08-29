@@ -30,12 +30,18 @@ from typing import Callable, Optional
 # Package import when loaded normally; absolute / inline fallbacks when this
 # file is executed by path (Vocalinux start_engine_process / IBus component exec).
 try:
+    from ..utils.host_process import host_env
     from ..utils.paths import xdg_data_home
 except ImportError:  # pragma: no cover - exercised via script-path subprocess
     try:
+        from vocalinux.utils.host_process import host_env
         from vocalinux.utils.paths import xdg_data_home
     except ImportError:
-        # Last resort: same semantics as vocalinux.utils.paths.xdg_data_home.
+        # Last resort: same semantics as the vocalinux.utils originals, except
+        # that host_env cannot strip a bundle it can no longer import.
+        def host_env(base=None):
+            return dict(os.environ if base is None else base)
+
         def xdg_data_home() -> str:
             return os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
 
@@ -157,9 +163,7 @@ def is_ibus_daemon_running() -> bool:
     """
     try:
         result = subprocess.run(
-            ["pgrep", "-x", "ibus-daemon"],
-            capture_output=True,
-            timeout=2,
+            ["pgrep", "-x", "ibus-daemon"], capture_output=True, timeout=2, env=host_env()
         )
         return result.returncode == 0
     except (subprocess.SubprocessError, FileNotFoundError):
@@ -299,6 +303,7 @@ def start_ibus_daemon():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
+            env=host_env(),
         )
         # Give daemon time to start
         time.sleep(0.5)
@@ -322,10 +327,7 @@ def is_engine_active() -> bool:
         import subprocess
 
         result = subprocess.run(
-            ["ibus", "engine"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+            ["ibus", "engine"], capture_output=True, text=True, timeout=5, env=host_env()
         )
         return result.returncode == 0 and ENGINE_NAME in result.stdout.strip()
     except (subprocess.SubprocessError, FileNotFoundError):
@@ -349,6 +351,7 @@ def _get_gnome_current_source() -> Optional[tuple[str, str]]:
             capture_output=True,
             text=True,
             timeout=5,
+            env=host_env(),
         )
         if result.returncode != 0:
             logger.debug("gsettings get mru-sources failed; not using GNOME fallback")
@@ -391,6 +394,7 @@ def _resolve_registered_xkb_engine(source_id: str) -> Optional[str]:
             capture_output=True,
             text=True,
             timeout=5,
+            env=host_env(),
         )
         if result.returncode != 0:
             logger.debug("ibus list-engine failed; cannot verify the GNOME XKB source")
@@ -461,10 +465,7 @@ def get_current_engine() -> Optional[str]:
     """
     try:
         result = subprocess.run(
-            ["ibus", "engine"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+            ["ibus", "engine"], capture_output=True, text=True, timeout=5, env=host_env()
         )
 
         # Check for "No global engine" in stderr (ibus-daemon has no
@@ -544,10 +545,7 @@ def get_current_xkb_layout() -> tuple:
 
     try:
         result = subprocess.run(
-            ["setxkbmap", "-query"],
-            capture_output=True,
-            text=True,
-            timeout=2,
+            ["setxkbmap", "-query"], capture_output=True, text=True, timeout=2, env=host_env()
         )
         if result.returncode == 0:
             layout, variant, option = "us", "", ""
@@ -606,12 +604,7 @@ def restore_xkb_layout(layout: str, variant: str = "", option: str = "") -> bool
             cmd = ["setxkbmap", "-option", ""] + cmd[1:]
             cmd.extend(["-option", option])
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=2, env=host_env())
         if result.returncode == 0:
             logger.info(f"Restored XKB layout: {layout} (variant: {variant}, option: {option})")
             return True
@@ -669,6 +662,7 @@ def sync_xwayland_layout_from_gnome() -> bool:
             capture_output=True,
             text=True,
             timeout=2,
+            env=host_env(),
         )
         if result.returncode == 0:
             logger.debug(f"Synced XWayland layout to GNOME source '{source_id}' (see #738)")
@@ -764,6 +758,7 @@ def switch_engine(engine_name: str) -> bool:
             capture_output=True,
             text=True,
             timeout=5,
+            env=host_env(),
         )
         # ibus engine command may return non-zero even on success
         # So we verify by checking the current engine
@@ -821,8 +816,9 @@ def start_engine_process() -> bool:
     logger.info(f"Starting IBus engine process: {engine_script}")
 
     try:
-        # Start the engine process using the same Python interpreter
-        # and inherit the current environment (for venv compatibility)
+        # Same interpreter, environment untouched: this child is ours, and in an
+        # AppImage host_env() would strip the very paths it needs to find its
+        # stdlib, packages and GI stack.
         env = os.environ.copy()
         # Ensure PYTHONPATH includes current site-packages if in a venv
         if hasattr(sys, "prefix") and sys.prefix != sys.base_prefix:

@@ -90,6 +90,13 @@ build:
     uv build
     @echo "Built packages in dist/"
 
+# Building on the host instead ships the host's glibc and GTK, which is how the
+# published AppImage ended up unable to start on Debian 12 or Ubuntu 22.04.
+#
+# Build the AppImage as CI does, in the pinned base image (needs docker)
+appimage: build
+    bash packaging/appimage/docker-build.sh dist/*.whl "$(grep -oP '__version__\s*=\s*"\K[^"]+' src/vocalinux/version.py)" dist
+
 # Regenerate uv.lock and the hash-pinned requirements/* exports.
 # Bump the torch/torchaudio +cpu pins in requirements/whisper.in together
 # when you want newer CPU builds (torchaudio on the CPU index lags torch).
@@ -105,6 +112,13 @@ lock:
         --index-url https://pypi.org/simple \
         --extra-index-url https://download.pytorch.org/whl/cpu \
         --python-platform x86_64-unknown-linux-gnu -o requirements/whisper.txt
+    # Compiled rather than exported: what the AppImage bundles on top of the
+    # lock, and what builds it, are pinned away from uv.lock on purpose --
+    # see requirements/appimage.in. --universal so one file covers both arches.
+    uv pip compile requirements/appimage.in --universal --no-deps --generate-hashes \
+        -o requirements/appimage.txt
+    uv pip compile requirements/appimage-tools.in --universal --no-deps --generate-hashes \
+        -o requirements/appimage-tools.txt
 
 # Fail if uv.lock is stale relative to pyproject.toml
 lock-check:
