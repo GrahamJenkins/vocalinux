@@ -22,7 +22,7 @@ import os
 import re
 import threading
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, NamedTuple, Optional
 
 import gi
 
@@ -1009,6 +1009,49 @@ def _get_recommended_vosk_model() -> tuple:
             return "small", f"Limited RAM ({ram_gb}GB) - optimized for speed"
     except Exception:
         return "small", "Default recommendation"
+
+
+class ModelRecommendation(NamedTuple):
+    """The model this system should use for an engine, ready to present."""
+
+    model_id: str
+    reason: str
+    display_name: str
+    size_label: str
+
+
+def recommended_model_for_engine(
+    engine: str, language: str = "auto"
+) -> Optional[ModelRecommendation]:
+    """Return the model to download for an engine, or None if it needs none.
+
+    This is the recommendation the model picker marks with a star, exposed for
+    callers outside the dialog (the tray offers it when dictation is attempted
+    without a model).
+    """
+    if engine == "whisper_cpp":
+        recommended_model, reason = get_recommended_whispercpp_model()
+        model_id, reason = _recommended_whispercpp_variant_for_language(
+            recommended_model, reason, language
+        )
+        size_mb = WHISPERCPP_MODEL_INFO.get(model_id, {}).get("size_mb", 0)
+    elif engine == "whisper":
+        model_id, reason = _get_recommended_whisper_model()
+        size_mb = WHISPER_MODEL_INFO.get(model_id, {}).get("size_mb", 0)
+    elif engine == "vosk":
+        model_id, reason = _get_recommended_vosk_model()
+        size_mb = VOSK_MODEL_INFO.get(model_id, {}).get("size_mb", 0)
+    else:
+        # Remote API transcribes server-side; there is nothing to download.
+        return None
+
+    size_mb = size_mb if isinstance(size_mb, int) else 0
+    return ModelRecommendation(
+        model_id=model_id,
+        reason=reason,
+        display_name=_model_display_name(model_id),
+        size_label=_format_size(size_mb),
+    )
 
 
 # GDK key-symbol names that are themselves modifiers (skipped while recording).
@@ -5131,6 +5174,13 @@ class SettingsDialog(Gtk.Dialog):
                 model_info = VOSK_MODEL_INFO.get(model_name, {"size_mb": 50})
 
             if needs_download:
+                if not self.speech_engine.try_begin_download():
+                    # The tray is already downloading a model; a second download
+                    # would fight it over the engine's progress callback and
+                    # configuration. Put the picker back on the saved model.
+                    self._show_download_busy_dialog()
+                    self._resync_model_ui_from_config()
+                    return
                 logger.info(f"Model {model_name} needs download, showing progress dialog")
                 download_dialog = ModelDownloadDialog(
                     self,
@@ -5173,6 +5223,7 @@ class SettingsDialog(Gtk.Dialog):
                         finally:
                             GLib.source_remove(cancel_check_id)
                             self.speech_engine.set_download_progress_callback(None)
+                            self.speech_engine.end_download()
 
                     except Exception as e:
                         error_msg = str(e)
@@ -5518,6 +5569,11 @@ For now, the engine has been reverted to VOSK."""
             model_info = VOSK_MODEL_INFO.get(model_name, {"size_mb": 50})
 
         if needs_download:
+            if not self.speech_engine.try_begin_download():
+                # Same guard as in _auto_apply_settings: one download at a time.
+                self._show_download_busy_dialog()
+                self._resync_model_ui_from_config()
+                return
             download_dialog = ModelDownloadDialog(
                 self,
                 model_name,
@@ -5554,6 +5610,7 @@ For now, the engine has been reverted to VOSK."""
                     finally:
                         GLib.source_remove(cancel_check_id)
                         self.speech_engine.set_download_progress_callback(None)
+                        self.speech_engine.end_download()
 
                 except Exception as e:
                     error_msg = str(e)
@@ -5577,6 +5634,19 @@ For now, the engine has been reverted to VOSK."""
             return True
 
         return self._apply_settings_internal(settings)
+
+    def _show_download_busy_dialog(self):
+        """Tell the user a model download is already running elsewhere."""
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text="A model download is already running",
+        )
+        dialog.format_secondary_text("Wait for it to finish, then pick the model again.")
+        dialog.run()
+        dialog.destroy()
 
     def _apply_settings_internal(self, settings: dict, raise_errors: bool = False) -> bool:
         """Internal method to apply settings.
