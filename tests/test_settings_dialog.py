@@ -815,9 +815,12 @@ class TestLanguageComboSearch(unittest.TestCase):
         self.assertIn("SOUND_EFFECT_TONES", source_code)
         self.assertIn('title="Dictation Tone"', source_code)
         self.assertIn("def _on_preview_tone_clicked", source_code)
-        self.assertIn("preview_tone(tone_id)", source_code)
+        self.assertIn("preview_tone_cue(tone_id, kind)", source_code)
+        self.assertIn("if not preview_tone_cue(tone_id, kind):", source_code)
+        self.assertIn("self._tone_preview_kind", source_code)
         self.assertNotIn("fifth", source_code)
         self.assertNotIn("01-linux-glide", source_code)
+        self.assertNotIn('title="Preview Tone"', source_code)
 
 
 class TestSettingsSearch(unittest.TestCase):
@@ -1041,15 +1044,17 @@ class TestAboutPage(unittest.TestCase):
     def test_product_status_and_honest_network_copy(self):
         self.assertIn("Available now on Linux (X11 and Wayland)", self.about)
         self.assertIn("After a model is downloaded", self.about)
-        self.assertIn("unsigned beta, v0.1.0-beta.1", self.about)
-        self.assertIn("Android beta / iOS source build", self.about)
-        self.assertIn("optional", self.about.lower())
-        self.assertIn("self-hosted compute", self.about)
+        self.assertIn("Private dictation for Linux, Mac, Windows, and phone.", self.about)
+        self.assertIn("Android beta / iOS TestFlight", self.source)
+        self.assertIn("Self-hosted, headless", self.source)
+        self.assertNotIn("iOS source build", self.source)
         self.assertNotIn("SmartScreen", self.about)
         self.assertNotIn("100% offline", self.about)
         self.assertNotIn("fully offline", self.about)
         self.assertNotIn("Coming soon", self.about)
         self.assertNotIn("releases/download", self.about)
+        # License is named once, on the License row, not in the intro or links.
+        self.assertEqual(self.about.count("GNU AGPL v3"), 1)
 
     def test_family_and_talk_urls(self):
         for url in (
@@ -1065,9 +1070,9 @@ class TestAboutPage(unittest.TestCase):
         ):
             self.assertIn(url, self.source)
         self.assertIn('label="Report a bug or idea"', self.about)
-        self.assertIn('"Discord"', self.about)
-        self.assertIn('"X"', self.about)
-        self.assertIn('"Email"', self.about)
+        self.assertIn("Join Discord", self.about)
+        self.assertIn("Follow on X", self.about)
+        self.assertIn("Email us", self.about)
         self.assertIn("https://github.com/VocaHQ/vocalinux/issues", self.about)
         self.assertIn("https://discord.gg/t6muquAJbm", self.source)
         self.assertIn("https://x.com/vocahq", self.source)
@@ -1096,10 +1101,38 @@ class TestAboutPage(unittest.TestCase):
         self.assertNotIn("Open the Vocalinux GitHub page", self.about)
 
     def test_source_code_row_sits_beside_website(self):
-        self.assertIn('title="Source code"', self.about)
+        self.assertIn('label="Website"', self.about)
+        self.assertIn('label="Source code"', self.about)
         self.assertIn("GITHUB_REPO_URL", self.about)
         self.assertIn("Open the Vocalinux GitHub repository", self.about)
-        self.assertLess(self.about.find("Website"), self.about.find("Source code"))
+        self.assertLess(self.about.find('label="Website"'), self.about.find('label="Source code"'))
+
+    def test_talk_to_us_sits_above_updates(self):
+        self.assertLess(self.about.find('title="Talk to us"'), self.about.find('title="Updates"'))
+        self.assertLess(
+            self.about.find("self.about_tab.pack_start(talk_group"),
+            self.about.find("self.about_tab.pack_start(updates_group"),
+        )
+
+    def test_channel_check_shares_one_row(self):
+        self.assertIn("_combo_with_suffix", self.about)
+        self.assertIn("self.check_updates_btn", self.about)
+        self.assertNotIn('title="Status"', self.about)
+        self.assertNotIn('title="Latest Release"', self.about)
+        self.assertIn("self.latest_release_row = self.release_notes_row", self.about)
+
+    def test_family_uses_platform_icons(self):
+        self.assertIn("def _family_tile", self.source)
+        self.assertIn("platform-linux", self.source)
+        self.assertIn("platform-apple", self.source)
+        self.assertIn("platform-android", self.source)
+        self.assertIn("platform-server", self.source)
+        self.assertIn("platform-home", self.source)
+        self.assertIn('("platform-android", "platform-apple")', self.source)
+        self.assertIn("family_grid.attach", self.about)
+        self.assertIn("image.set_margin_end(8)", self.source)
+        helper = self.source.split("def _family_tile")[1].split("\n    def ")[0]
+        self.assertIn("spacing=16", helper)
 
     def test_can_open_about_urls(self):
         from vocalinux.ui.settings_dialog import (
@@ -1209,6 +1242,93 @@ class TestAboutPage(unittest.TestCase):
         self.assertIn('aria-label="Vocalinux"', packaged_svg)
         self.assertNotIn("<rect", packaged_svg)
         self.assertIn('get_icon_path("vocalinux")', self.about)
+
+    def test_platform_marks_are_currentcolor_svgs(self):
+        from pathlib import Path
+
+        icons = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "vocalinux"
+            / "resources"
+            / "icons"
+            / "scalable"
+        )
+        root_icons = Path(__file__).resolve().parents[1] / "resources" / "icons" / "scalable"
+        for name, title in (
+            ("platform-linux", "Linux"),
+            ("platform-apple", "Apple"),
+            ("platform-android", "Android"),
+            ("platform-server", "Server"),
+            ("platform-home", "Home"),
+        ):
+            packaged_path = icons / f"{name}.svg"
+            shipped_path = root_icons / f"{name}.svg"
+            packaged = packaged_path.read_text(encoding="utf-8")
+            shipped = shipped_path.read_text(encoding="utf-8")
+            self.assertEqual(packaged, shipped, name)
+            self.assertIn('viewBox="0 0 24 24"', packaged, name)
+            self.assertIn('fill="currentColor"', packaged, name)
+            self.assertIn(f"<title>{title}</title>", packaged, name)
+
+    def test_about_marks_use_theme_aware_ink(self):
+        self.assertIn("_ABOUT_INK_ON_DARK", self.source)
+        self.assertIn("def _about_ink_hex(", self.source)
+        self.assertIn("def _about_surface_is_dark(", self.source)
+        self.assertIn('replace("currentColor", ink)', self.source)
+        self.assertIn("_FAMILY_ICON_PX", self.source)
+
+
+class TestAboutInk(unittest.TestCase):
+    """Ink for About marks follows light vs dark surfaces."""
+
+    def test_dark_theme_pref_picks_light_ink(self):
+        from vocalinux.ui.settings_dialog import (
+            _ABOUT_INK,
+            _ABOUT_INK_ON_DARK,
+            _about_ink_hex,
+            _about_surface_is_dark,
+        )
+
+        self.assertNotEqual(_ABOUT_INK, _ABOUT_INK_ON_DARK)
+        self.assertTrue(_ABOUT_INK_ON_DARK.startswith("#"))
+        if _about_surface_is_dark():
+            self.assertEqual(_about_ink_hex(), _ABOUT_INK_ON_DARK)
+        else:
+            self.assertIn(_about_ink_hex(), {_ABOUT_INK, _ABOUT_INK_ON_DARK})
+
+
+class TestSettingsControlColumn(unittest.TestCase):
+    """Dropdowns, steppers, and action buttons share one right-hand column."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = TestSettingsSearch._settings_source()
+
+    def test_style_helpers_exist(self):
+        self.assertIn("def _style_combo(", self.source)
+        self.assertIn("def _style_spin(", self.source)
+        self.assertIn("def _combo_with_suffix(", self.source)
+        self.assertIn("ellipsize", self.source)
+        self.assertIn("Pango.EllipsizeMode.END", self.source)
+
+    def test_combos_use_style_helper(self):
+        for name in (
+            "self.engine_combo",
+            "self.model_combo",
+            "self.model_variant_combo",
+            "self.language_combo",
+            "self.paste_shortcut_combo",
+            "self.shortcut_mode_combo",
+            "self.shortcut_combo",
+            "self.gpu_device_combo",
+            "self.model_keepalive_timeout_combo",
+        ):
+            self.assertIn(f"_style_combo({name})", self.source, name)
+
+    def test_model_card_has_no_legend(self):
+        self.assertNotIn("✓ Downloaded    ↓ Will download    ★ Recommended", self.source)
+        self.assertNotIn("Tip: <b>", self.source)
 
 
 if __name__ == "__main__":
