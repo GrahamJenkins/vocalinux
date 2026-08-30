@@ -8,30 +8,32 @@
 
 <!-- Badge rows ordered narrowest → widest (steps out into the hero) -->
 
-<!-- Values + packaging (narrow) -->
-[![Privacy: on-device](https://img.shields.io/badge/privacy-on--device%20after%20model%20download-success)](https://github.com/VocaHQ/vocalinux#features)
-[![X11 & Wayland](https://img.shields.io/badge/display-X11%20%7C%20Wayland-lightgrey)](https://github.com/VocaHQ/vocalinux#features)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/t6muquAJbm)
-[![Email](https://img.shields.io/badge/hello%40vocahq.com-1a7f4e)](mailto:hello@vocahq.com)
-[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
-
-<!-- Identity + quality (medium) -->
-[![GitHub release](https://img.shields.io/github/v/release/VocaHQ/vocalinux)](https://github.com/VocaHQ/vocalinux/releases)
-[![PyPI](https://img.shields.io/pypi/v/vocalinux)](https://pypi.org/project/vocalinux/)
-[![AUR](https://img.shields.io/aur/version/vocalinux)](https://aur.archlinux.org/packages/vocalinux)
-[![Vocalinux CI](https://github.com/VocaHQ/vocalinux/actions/workflows/unified-pipeline.yml/badge.svg?branch=main)](https://github.com/VocaHQ/vocalinux/actions/workflows/unified-pipeline.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/VocaHQ/vocalinux/branch/main/graph/badge.svg)](https://codecov.io/gh/VocaHQ/vocalinux)
-[![Follow on X](https://img.shields.io/badge/Follow%20%40vocahq-000000?style=flat&logo=x&logoColor=white)](https://x.com/vocahq)
-
 <!-- Distros (widest; base plate above the hero) -->
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04+-E95420?logo=ubuntu&logoColor=white)](docs/DISTRO_COMPATIBILITY.md)
 [![Debian](https://img.shields.io/badge/Debian-12+-A81D33?logo=debian&logoColor=white)](docs/DISTRO_COMPATIBILITY.md)
 [![Fedora](https://img.shields.io/badge/Fedora-39+-51A2DA?logo=fedora&logoColor=white)](docs/DISTRO_COMPATIBILITY.md)
 [![Arch](https://img.shields.io/badge/Arch-rolling-1793D1?logo=archlinux&logoColor=white)](docs/DISTRO_COMPATIBILITY.md)
 [![openSUSE](https://img.shields.io/badge/openSUSE-Tumbleweed-73BA25?logo=opensuse&logoColor=white)](docs/DISTRO_COMPATIBILITY.md)
+
+<!-- Values + packaging (narrow) -->
+[![Privacy: on-device](https://img.shields.io/badge/privacy-on--device-success)](https://github.com/VocaHQ/vocalinux#features)
+[![X11 & Wayland](https://img.shields.io/badge/display-X11%20%7C%20Wayland-lightgrey)](https://github.com/VocaHQ/vocalinux#features)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
+
+
+<!-- Identity + quality (medium) -->
+
+[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/t6muquAJbm)
+[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
+[![Follow on X](https://img.shields.io/badge/Follow%20%40vocahq-000000?style=flat&logo=x&logoColor=white)](https://x.com/vocahq)
+
+[![GitHub release](https://img.shields.io/github/v/release/VocaHQ/vocalinux)](https://github.com/VocaHQ/vocalinux/releases)
+[![PyPI](https://img.shields.io/pypi/v/vocalinux)](https://pypi.org/project/vocalinux/)
+[![AUR](https://img.shields.io/aur/version/vocalinux)](https://aur.archlinux.org/packages/vocalinux)
+
 
 </div>
 
