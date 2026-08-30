@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://github.com/user-attachments/assets/56dabe5c-5c65-44d5-a36a-429c9fea0719" width="50" height="50" alt="Vocalinux">
+<img src="https://vocalinux.com/brand/vocalinux-mark-circle.svg" width="50" height="50" alt="Vocalinux">
 
 # Vocalinux
 
