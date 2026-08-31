@@ -5,10 +5,11 @@ on:
     tags:
       - 'v*'
 
+# Least privilege, granted per job. `id-token: write` at the top level handed an
+# OIDC token to every job in the workflow, including publish-aur, which runs a
+# third-party action with our AUR signing key.
 permissions:
-  contents: write
-  packages: write
-  id-token: write  # Required for PyPI trusted publishing
+  contents: read
 
 env:
   # Build against the supported floor (requires-python in pyproject.toml).
@@ -18,14 +19,16 @@ jobs:
   build-and-release:
     name: Build and Create Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -33,7 +36,7 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build twine wheel setuptools
+          pip install build wheel setuptools
 
       - name: Extract version from tag
         id: get_version
@@ -54,16 +57,37 @@ jobs:
             echo "Warning: Version mismatch between tag ($TAG_VERSION) and package ($PACKAGE_VERSION)"
           fi
 
+      # Archive timestamps are what made two builds of one tag differ. Pinned to
+      # the tagged commit, re-running this workflow reproduces the bytes we
+      # published, so a checksum stays true for the life of the release.
+      - name: Pin the build timestamp to the tagged commit
+        run: |
+          echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct "$GITHUB_SHA")" >> "$GITHUB_ENV"
+
+      # The only `python -m build` in this workflow. PyPI, the aarch64 AppImage
+      # and the checksums all consume the artifact below, so the wheel on PyPI
+      # is the wheel on the release. It used to be built three times, on three
+      # runners, and nothing guaranteed the three agreed.
       - name: Build package
         run: |
           python -m build
           echo "Built packages:"
           ls -la dist/
 
+      - name: Upload the built distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: python-dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
       # glslc is built from the pinned shaderc commit inside the container -
       # Ubuntu 22.04 packages none - and depends on nothing but that commit.
       - name: Cache AppImage build tools
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/vocalinux-appimage
           key: appimage-tools-${{ runner.arch }}-${{ hashFiles('packaging/appimage/tool_checksums.txt') }}
@@ -75,9 +99,17 @@ jobs:
           bash packaging/appimage/docker-build.sh dist/*.whl "${{ steps.get_version.outputs.VERSION }}" dist
           ls -la dist/*.AppImage
 
+      - name: Upload the x86_64 AppImage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: appimage-x86_64
+          path: dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Create Release
         id: create_release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             dist/*.whl
@@ -129,6 +161,19 @@ jobs:
             ```
             Still requires `xdotool`/`wtype`/`ydotool` on the host for text injection, same as the PyPI path.
 
+            ### Verifying what you downloaded
+            `SHA256SUMS` covers every file here and is attached once the aarch64 build finishes,
+            a few minutes after this release appears. The wheel and sdist below are the same bytes
+            published to PyPI.
+            ```bash
+            sha256sum -c --ignore-missing SHA256SUMS
+            ```
+            Each artifact also carries GitHub build provenance, which ties it to this workflow run:
+            ```bash
+            gh attestation verify Vocalinux-${{ steps.get_version.outputs.VERSION }}-x86_64.AppImage \
+              --repo ${{ github.repository }}
+            ```
+
             ---
             See [CHANGELOG](https://github.com/VocaHQ/vocalinux/releases) for detailed changes.
 
@@ -136,20 +181,11 @@ jobs:
     name: Build and Attach AppImage (aarch64)
     needs: build-and-release
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install build wheel setuptools
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Extract version from tag
         id: get_version
@@ -157,15 +193,19 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Build package
-        run: |
-          python -m build
-          ls -la dist/
+      # The wheel is py3-none-any, so this is the wheel the release and PyPI
+      # carry. Building it again here made a third copy of the same version that
+      # no published checksum could describe.
+      - name: Download the built distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: python-dist
+          path: dist
 
       # glslc is built from the pinned shaderc commit inside the container -
       # Ubuntu 22.04 packages none - and depends on nothing but that commit.
       - name: Cache AppImage build tools
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/vocalinux-appimage
           key: appimage-tools-${{ runner.arch }}-${{ hashFiles('packaging/appimage/tool_checksums.txt') }}
@@ -177,6 +217,14 @@ jobs:
           bash packaging/appimage/docker-build.sh dist/*.whl "${{ steps.get_version.outputs.VERSION }}" dist
           ls -la dist/*.AppImage
 
+      - name: Upload the aarch64 AppImage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: appimage-aarch64
+          path: dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Attach to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -186,49 +234,89 @@ jobs:
             --repo ${{ github.repository }} \
             --clobber
 
+  # Runs last because the aarch64 AppImage lands after the release is created:
+  # a checksum manifest that covers three of the four files is worse than none,
+  # since the missing one looks like the tampered one.
+  publish-checksums:
+    name: Checksums and Provenance
+    needs: [build-and-release, build-appimage-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Collect every artifact this run published
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Generate SHA256SUMS
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          ls -la
+          # Bare names, so `sha256sum -c` works in whatever directory the user
+          # downloaded the release into.
+          sha256sum -- *.whl *.tar.gz *.AppImage | tee SHA256SUMS
+
+      # Attesting from the manifest rather than a second glob: the file we
+      # publish and the set we attest cannot drift apart.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-checksums: dist/SHA256SUMS
+
+      - name: Attach SHA256SUMS to the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            dist/SHA256SUMS \
+            --repo ${{ github.repository }} \
+            --clobber
+
   publish-pypi:
     name: Publish to PyPI
     needs: build-and-release
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # PyPI trusted publishing; there is no API token to leak
     environment:
       name: pypi
       url: https://pypi.org/project/vocalinux/
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+      # Not a rebuild: the artifact attached to the GitHub release, so one
+      # checksum describes both.
+      - name: Download the built distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: python-dist
+          path: dist
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install build twine
-
-      - name: Build package
-        run: |
-          python -m build
-          echo "Built packages:"
-          ls -la dist/
 
       - name: Verify package
         run: |
+          python -m pip install --upgrade pip
+          pip install twine
           twine check dist/*
 
       - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          twine upload dist/* --skip-existing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          skip-existing: true
 
   publish-aur:
     name: Publish to AUR
     needs: build-and-release
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     # Secrets: AUR_SSH_PRIVATE_KEY, AUR_USERNAME, AUR_EMAIL — see docs/AUR.md
     steps:
       - name: Check for AUR credentials
@@ -245,7 +333,7 @@ jobs:
 
       - name: Checkout code
         if: steps.aur.outputs.configured == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Bump PKGBUILD version
         if: steps.aur.outputs.configured == 'true'
@@ -258,7 +346,7 @@ jobs:
 
       - name: Publish AUR package
         if: steps.aur.outputs.configured == 'true'
-        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
+        uses: KSXGitHub/github-actions-deploy-aur@084b0d9b15415bf9cdb65d44dad1efe37a354050 # v4.2.0
         with:
           pkgname: vocalinux
           pkgbuild: packaging/aur/vocalinux/PKGBUILD
@@ -272,12 +360,14 @@ jobs:
     name: Deploy Website
     runs-on: ubuntu-latest
     needs: [build-and-release, publish-pypi]
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '24'
           cache: 'npm'
@@ -319,7 +409,7 @@ jobs:
           npm run deploy
 
       - name: Deploy to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./web/out
