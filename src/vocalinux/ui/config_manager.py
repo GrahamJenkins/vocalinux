@@ -142,6 +142,11 @@ DEFAULT_CONFIG = {
         # Ctrl+Shift+V when a nested terminal panel is not detected.
         "paste_shortcut": "auto",
     },
+    "dictionary": {
+        # Custom terms are kept in custom-dictionary.txt rather than config.json
+        # so accessibility tools can consume the stable, line-oriented contract.
+        "terms_enabled": False,
+    },
     "advanced": {
         "power_user_mode": False,
         "debug_logging": False,
