@@ -2548,7 +2548,7 @@ class SettingsDialog(Gtk.Dialog):
         terms_group.add_row(
             PreferenceRow(
                 title="Use custom terms",
-                subtitle="Whisper and whisper.cpp only; VOSK and remote API do not accept prompts.",
+                subtitle="Vocabulary bias works with Whisper and whisper.cpp; corrections work with every engine.",
                 widget=self.dictionary_terms_enabled_switch,
             )
         )
@@ -2722,7 +2722,7 @@ class SettingsDialog(Gtk.Dialog):
         if any(existing.casefold() == term.casefold() for existing in terms):
             self.dictionary_feedback_label.set_text("That term is already in the terms file.")
             return
-        if not self.dictionary_manager.save_terms([*terms, term]):
+        if not self.dictionary_manager.add_term(term):
             self.dictionary_feedback_label.set_text(
                 "Could not save the terms file; no term was added."
             )
@@ -2741,12 +2741,7 @@ class SettingsDialog(Gtk.Dialog):
         """Remove one term from the fixed line file."""
         if self._initializing or self._applying_settings or not self._dictionary_available():
             return
-        terms = [
-            existing
-            for existing in self.dictionary_manager.get_terms()
-            if existing.casefold() != term.casefold()
-        ]
-        if self.dictionary_manager.save_terms(terms):
+        if self.dictionary_manager.remove_term(term):
             self.dictionary_feedback_label.set_text("Term removed from the live terms file.")
         else:
             self.dictionary_feedback_label.set_text(
