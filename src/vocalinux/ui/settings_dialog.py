@@ -324,7 +324,7 @@ def _recommended_whispercpp_variant_for_language(
     english_variant = f"{recommended_size}.en"
 
     if _language_is_english(language_id) and english_variant in WHISPERCPP_MODEL_INFO:
-        return english_variant, f"{reason}; English language selected"
+        return english_variant, reason
 
     return recommended_model, reason
 
@@ -451,6 +451,7 @@ def _combo_with_suffix(
 VOCALINUX_SITE_URL = "https://vocalinux.com"
 VOCAHQ_SITE_URL = "https://vocahq.com"
 VOCAMAC_SITE_URL = "https://vocamac.com"
+VOCAWIN_SITE_URL = "https://vocawin.com"
 VOCAPHONE_SITE_URL = "https://vocaphone.vocahq.com"
 VOCAGATEWAY_SITE_URL = "https://vocagateway.vocahq.com"
 GITHUB_REPO_URL = __url__
@@ -465,6 +466,7 @@ _ABOUT_OPEN_URLS = frozenset(
         VOCALINUX_SITE_URL,
         VOCAHQ_SITE_URL,
         VOCAMAC_SITE_URL,
+        VOCAWIN_SITE_URL,
         VOCAPHONE_SITE_URL,
         VOCAGATEWAY_SITE_URL,
         GITHUB_REPO_URL,
@@ -568,6 +570,13 @@ _VOCAHQ_FAMILY_LINKS = (
         "Open vocamac.com",
     ),
     (
+        VOCAWIN_SITE_URL,
+        "VocaWin",
+        "Windows, unsigned beta",
+        ("platform-windows",),
+        "Open vocawin.com",
+    ),
+    (
         VOCAPHONE_SITE_URL,
         "VocaPhone",
         "Android beta / iOS TestFlight",
@@ -612,8 +621,8 @@ MODEL_SPECIALIZATION_TOOLTIP = (
     "lower-memory quantized models, Turbo speed, or a legacy large model."
 )
 LANGUAGE_TOOLTIP = (
-    "Choose the language you dictate in. Type to search the list. English-only model "
-    "specializations limit this list to English."
+    "Choose the language you dictate in. Search the list. Picking a language "
+    "other than English switches off an English-only model."
 )
 
 
@@ -1043,12 +1052,26 @@ spinbutton {
     margin-right: 8px;
 }
 
-/* Unused downloads: one collapsed row until expanded */
-.unused-downloads-expander {
-    padding: 8px 12px;
+/* Sibling expander cards on Speech Model (Advanced, Unused downloads).
+   Padding lives on the expander, not the title class: .preferences-group-title
+   already has 16px inset, which stacked with expander margin and shoved the
+   chevron off the unused-downloads title. */
+.expander-card expander {
+    padding: 10px 12px;
 }
 
-.unused-downloads-expander list {
+.expander-card-title {
+    font-weight: bold;
+    font-size: 0.9em;
+    color: @theme_unfocused_fg_color;
+}
+
+.expander-card-subtitle {
+    font-size: 0.85em;
+    color: @theme_unfocused_fg_color;
+}
+
+.expander-card list {
     background-color: transparent;
 }
 
@@ -1189,7 +1212,7 @@ class SearchablePicker(Gtk.Box):
         self.pack_start(self._button, True, True, 0)
 
         self._search = Gtk.SearchEntry()
-        self._search.set_placeholder_text("Type to search…")
+        self._search.set_placeholder_text("Search…")
         self._search.connect("search-changed", self._on_search_changed)
         self._search.connect("activate", self._on_search_activate)
 
@@ -1642,6 +1665,30 @@ def _row_matches_query(query: str, title: str, subtitle: str = "", keywords=()) 
     return any(query in text.casefold() for text in haystacks)
 
 
+def _make_expander_card(
+    title: str, subtitle: str
+) -> tuple[Gtk.Box, Gtk.Expander, Gtk.Box, Gtk.Label]:
+    """Card with a compact title+subtitle expander, used for Advanced and Unused."""
+    island = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    island.get_style_context().add_class("preferences-group")
+    island.get_style_context().add_class("expander-card")
+
+    expander = Gtk.Expander()
+    header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+    title_label = Gtk.Label(label=title, xalign=0)
+    title_label.get_style_context().add_class("expander-card-title")
+    subtitle_label = Gtk.Label(label=subtitle, xalign=0, wrap=True)
+    subtitle_label.get_style_context().add_class("expander-card-subtitle")
+    header.pack_start(title_label, False, False, 0)
+    header.pack_start(subtitle_label, False, False, 0)
+    expander.set_label_widget(header)
+
+    body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    expander.add(body)
+    island.pack_start(expander, False, False, 0)
+    return island, expander, body, subtitle_label
+
+
 class PreferencesGroup(Gtk.Box):
     """A card-style group of preferences, similar to libadwaita's AdwPreferencesGroup."""
 
@@ -1998,6 +2045,8 @@ class SettingsDialog(Gtk.Dialog):
         self.advanced_box = None
         self.advanced_island = None
         self.advanced_expander = None
+        self.unused_island = None
+        self.unused_expander = None
         self.simple_page = None
         self.simple_group = None
         self.engine_group = None
@@ -3017,7 +3066,7 @@ class SettingsDialog(Gtk.Dialog):
 
     def _build_simple_model_section(self):
         """Build the simple questions and the Advanced reveal (#779)."""
-        self.simple_group = PreferencesGroup(title="What you dictate")
+        self.simple_group = PreferencesGroup(title="Language")
 
         # Searchable, like the advanced row: over thirty languages is too many to
         # scroll, and a list you cannot type into is a step backwards.
@@ -3037,7 +3086,7 @@ class SettingsDialog(Gtk.Dialog):
             )
         self.simple_language_row = PreferenceRow(
             title="Main language",
-            subtitle="Type to search, or pick from the list",
+            subtitle="Search or pick from the list",
             widget=self.simple_language_combo,
             keywords=("language", "speak"),
         )
@@ -3048,8 +3097,8 @@ class SettingsDialog(Gtk.Dialog):
         self.simple_multi_switch = Gtk.Switch()
         self.simple_multi_switch.set_valign(Gtk.Align.CENTER)
         self.simple_multi_row = PreferenceRow(
-            title="I also dictate whole texts in other languages",
-            subtitle="Detects the language per utterance; can be wrong on short ones",
+            title="Other languages",
+            subtitle="Guesses the language each time. Short clips can be wrong.",
             widget=self.simple_multi_switch,
             keywords=("multilingual", "auto", "detect"),
         )
@@ -3061,7 +3110,7 @@ class SettingsDialog(Gtk.Dialog):
         # First entry is the multilingual answer: any language, detected per
         # utterance. Naming one specific second language means the same thing
         # to the engine, but lets the user say which one they had in mind.
-        self.simple_second_language_combo.append("auto", "Any language (auto-detect)")
+        self.simple_second_language_combo.append("auto", "Any language")
         for language_id, info in SUPPORTED_LANGUAGES.items():
             if language_id != "auto":
                 self.simple_second_language_combo.append(language_id, info["name"])
@@ -3072,7 +3121,7 @@ class SettingsDialog(Gtk.Dialog):
             title="Other language",
             # Honest about what the engine does: whisper takes one language or
             # none, so any second language means detection per utterance.
-            subtitle="Recognition detects the language of each utterance",
+            subtitle="Or pick Any language to auto-detect",
             widget=self.simple_second_language_combo,
             keywords=("second", "language", "other"),
         )
@@ -3085,8 +3134,8 @@ class SettingsDialog(Gtk.Dialog):
         for priority in PRIORITIES:
             self.simple_priority_combo.append(priority, PRIORITY_LABELS[priority])
         self.simple_priority_row = PreferenceRow(
-            title="Priority",
-            subtitle="Balanced follows what your hardware can run",
+            title="Speed vs accuracy",
+            subtitle="Balanced is the default for this computer",
             widget=self.simple_priority_combo,
             keywords=("speed", "accuracy", "priority"),
         )
@@ -3104,33 +3153,17 @@ class SettingsDialog(Gtk.Dialog):
         # it could not be raised above the dialog at all. Both cards visible at
         # once also makes the expanded rows a readout of what the simple answers
         # resolved to.
-        self.advanced_island = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        self.advanced_island.get_style_context().add_class("preferences-group")
-
-        self.advanced_expander = Gtk.Expander()
-        header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        title = Gtk.Label(label="Advanced", xalign=0)
-        title.get_style_context().add_class("preferences-group-title")
-        subtitle = Gtk.Label(
-            label="Engine, model size, specialization, downloads and the remote server",
-            xalign=0,
-            wrap=True,
+        (
+            self.advanced_island,
+            self.advanced_expander,
+            self.advanced_box,
+            _,
+        ) = _make_expander_card(
+            "Advanced",
+            "Engine, model, and remote server",
         )
-        subtitle.get_style_context().add_class("preference-row-subtitle")
-        header.pack_start(title, False, False, 0)
-        header.pack_start(subtitle, False, False, 0)
-        self.advanced_expander.set_label_widget(header)
-        self.advanced_expander.set_margin_top(12)
-        self.advanced_expander.set_margin_bottom(12)
-        self.advanced_expander.set_margin_start(16)
-        self.advanced_expander.set_margin_end(16)
-
-        # Everything the detailed view holds is packed in here; the sections
-        # built after this one append to it.
-        self.advanced_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        self.advanced_box.set_spacing(12)
         self.advanced_box.set_margin_top(8)
-        self.advanced_expander.add(self.advanced_box)
-        self.advanced_island.pack_start(self.advanced_expander, False, False, 0)
         self.content_box.pack_start(self.advanced_island, False, False, 0)
 
         self.advanced_expander.connect("notify::expanded", self._on_advanced_expanded)
@@ -3161,7 +3194,7 @@ class SettingsDialog(Gtk.Dialog):
         self.model_combo.set_tooltip_text(MODEL_SIZE_TOOLTIP)
         _prevent_scroll_on_hover(self.model_combo)
         self.model_row = PreferenceRow(
-            title="Model Size",
+            title="Model size",
             subtitle="Larger models are more accurate but slower",
             widget=self.model_combo,
         )
@@ -3193,7 +3226,7 @@ class SettingsDialog(Gtk.Dialog):
             language_entry.connect("focus-out-event", self._on_language_entry_focus_out)
         self.language_row = PreferenceRow(
             title="Language",
-            subtitle="Type to search, or pick from the list",
+            subtitle="Search or pick from the list",
             widget=self.language_combo,
         )
         self.language_row.set_tooltip_text(LANGUAGE_TOOLTIP)
@@ -3244,19 +3277,20 @@ class SettingsDialog(Gtk.Dialog):
         # priority or language change did anything, and what it will cost.
         self.simple_page.pack_start(self.model_info_card, False, False, 0)
 
+        (
+            self.unused_island,
+            self.unused_expander,
+            unused_body,
+            self.unused_expander_subtitle,
+        ) = _make_expander_card(
+            "Unused downloads",
+            "Downloaded, but not the one in use",
+        )
         self.unused_models_group = PreferencesGroup(
             keywords=("delete", "remove", "unused", "disk", "storage", "downloaded"),
         )
-        self.unused_models_group.title = "Unused downloads"
-        self.unused_models_group.description = "On disk, but not the model currently selected"
-
-        self.unused_expander = Gtk.Expander(label="Unused downloads")
-        self.unused_expander.set_expanded(False)
-        self.unused_expander.set_use_underline(False)
-        self.unused_expander.set_tooltip_text(
-            "Leftover model files on disk. Expand to delete them one at a time."
-        )
-        self.unused_expander.get_style_context().add_class("unused-downloads-expander")
+        # The island is the card; this group only holds rows for search/delete.
+        self.unused_models_group.get_style_context().remove_class("preferences-group")
 
         self.unused_models_scroll = Gtk.ScrolledWindow()
         self.unused_models_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -3273,15 +3307,16 @@ class SettingsDialog(Gtk.Dialog):
         self.unused_models_group.remove(self.unused_models_group.listbox)
         list_holder.pack_start(self.unused_models_group.listbox, False, False, 0)
         self.unused_models_scroll.add(list_holder)
-        self.unused_expander.add(self.unused_models_scroll)
-        # Backstop: the refresh measures while the expander is collapsed and
-        # the dialog may not be mapped yet. Remeasure when the user expands,
-        # so a short first measurement can never leave the list clipped.
+        self.unused_models_group.pack_start(self.unused_models_scroll, False, False, 0)
+        unused_body.pack_start(self.unused_models_group, False, False, 0)
+        self.unused_expander.set_expanded(False)
+        # Refresh may run while collapsed or before map. Remeasure on expand
+        # and on map so a short first measurement cannot leave rows clipped.
         self.unused_expander.connect(
             "notify::expanded", lambda *_args: self._fit_unused_downloads_height()
         )
-        self.unused_models_group.pack_start(self.unused_expander, False, False, 0)
-        self.advanced_box.pack_start(self.unused_models_group, False, False, 0)
+        self.unused_models_scroll.connect("map", lambda *_args: self._fit_unused_downloads_height())
+        self.content_box.pack_start(self.unused_island, False, False, 0)
 
         # Connect signals
         self.engine_combo.connect("changed", self._on_engine_changed)
@@ -5241,7 +5276,7 @@ class SettingsDialog(Gtk.Dialog):
 
     def _default_language_for_engine(self, engine: str) -> str:
         """Return a safe default language for the selected engine and model."""
-        if engine == "vosk" or self._is_selected_whispercpp_model_english_only():
+        if engine == "vosk":
             return "en-us"
         return "auto"
 
@@ -5591,22 +5626,22 @@ class SettingsDialog(Gtk.Dialog):
 
     def _refresh_unused_downloads(self):
         """Rebuild the Unused downloads list, or hide it when empty."""
-        if not hasattr(self, "unused_models_group"):
+        if not hasattr(self, "unused_models_group") or self.unused_island is None:
             return
 
         if self._get_selected_engine() == "remote_api":
-            self.unused_models_group.hide()
+            self.unused_island.hide()
             return
 
         unused = self._list_unused_downloads()
         self.unused_models_group.clear_rows()
         if not unused:
-            self.unused_models_group.hide()
+            self.unused_island.hide()
             return
 
         count = len(unused)
-        leftover = "leftover model" if count == 1 else "leftover models"
-        self.unused_expander.set_label(f"Unused downloads ({count} {leftover})")
+        leftover = "unused model" if count == 1 else "unused models"
+        self.unused_expander_subtitle.set_text(f"{count} {leftover} on disk")
 
         was_expanded = self.unused_expander.get_expanded()
         for model_id, title, size_label in unused:
@@ -5627,7 +5662,7 @@ class SettingsDialog(Gtk.Dialog):
             )
             self.unused_models_group.add_row(row)
 
-        self.unused_models_group.show_all()
+        self.unused_island.show_all()
         self.unused_expander.set_expanded(was_expanded)
         self._fit_unused_downloads_height()
 
@@ -5639,6 +5674,10 @@ class SettingsDialog(Gtk.Dialog):
         was cut off below the edge of the viewport while the header still
         counted it (#683).
         """
+        if not hasattr(self, "unused_models_scroll"):
+            return
+        if self.unused_expander is not None and not self.unused_expander.get_expanded():
+            return
         _, natural_height = self.unused_models_group.listbox.get_preferred_height()
         self.unused_models_scroll.set_min_content_height(
             _clamp_unused_downloads_height(natural_height)
@@ -5881,7 +5920,6 @@ class SettingsDialog(Gtk.Dialog):
             return
 
         engine = _engine_from_display(engine)
-        english_only_whispercpp = self._is_selected_whispercpp_model_english_only()
 
         for lang_code, lang_info in SUPPORTED_LANGUAGES.items():
             display_text = lang_info["name"]
@@ -5893,9 +5931,8 @@ class SettingsDialog(Gtk.Dialog):
                 is_downloaded = _is_vosk_model_downloaded("small", lang_code)
                 display_text += " ✓" if is_downloaded else " ↓"
             elif engine in ["whisper", "whisper_cpp", "parakeet", "faster_whisper", "remote_api"]:
-                if english_only_whispercpp and lang_info.get("whisper") != "en":
-                    continue
-                # Both Whisper and whisper.cpp support auto-detect
+                # An English-only model must not hide other languages: picking
+                # Polish (or auto) retargets to the multilingual sibling.
                 if lang_code == "auto":
                     display_text += " ⚠"
             else:
@@ -5915,8 +5952,7 @@ class SettingsDialog(Gtk.Dialog):
 
         if self._is_selected_whispercpp_model_english_only():
             self.language_warning.set_markup(
-                "<span foreground='#e5a50a'>⚠ English-only model selected. "
-                "Language choices are limited to English.</span>"
+                "<span foreground='#e5a50a'>⚠ This model only understands English.</span>"
             )
             self.language_warning.show()
         elif lang_info.get("warning"):
@@ -5938,7 +5974,7 @@ class SettingsDialog(Gtk.Dialog):
         """
         if self._processing_language_change:
             return
-        if self._initializing or self._applying_settings:
+        if self._initializing or self._applying_settings or self._simple_driving:
             return
 
         lang_code = self.language_combo.get_active_id()
@@ -6229,7 +6265,8 @@ class SettingsDialog(Gtk.Dialog):
         if is_remote:
             self.model_row.hide()
             self.model_variant_row.hide()
-            self.unused_models_group.hide()
+            if self.unused_island is not None:
+                self.unused_island.hide()
             self.model_info_card.hide()
             self.remote_server_group.show_all()
             self.remote_status_label.show()
@@ -6364,8 +6401,8 @@ class SettingsDialog(Gtk.Dialog):
             if already_have and already_have != model_name:
                 target = already_have
                 message = (
-                    f"You already have {_model_display_name(already_have)} on disk — "
-                    "using it needs no download"
+                    f"You already have {_model_display_name(already_have)} on disk. "
+                    "Using it needs no download."
                 )
 
         if target == model_name:
